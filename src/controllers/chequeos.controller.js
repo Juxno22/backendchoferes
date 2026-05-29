@@ -57,16 +57,30 @@ function normalizarFecha(fecha) {
   return String(fecha).slice(0, 10);
 }
 
+function normalizarEstadoItem(estado) {
+  const value = String(estado || '').toLowerCase().trim();
+
+  if (['bueno', 'regular', 'malo', 'na'].includes(value)) {
+    return value;
+  }
+
+  if (['ok', 'bien', 'correcto', 'Bueno', 'BUENO', 'Okay', 'okay', 'OKAY'].includes(value)) return 'bueno';
+  if (['n/a', 'no_aplica', 'no aplica'].includes(value)) return 'na';
+  if (['falla', 'mal', 'malo', 'MAL', 'defectuoso'].includes(value)) return 'malo';
+
+  return 'bueno';
+}
+
 function normalizarItems(items) {
   if (!Array.isArray(items)) return [];
 
   return items
     .filter((item) => item && item.categoria && item.item)
     .map((item) => ({
-      categoria: item.categoria,
-      item: item.item,
-      estado: item.estado || 'na',
-      comentario: item.comentario || null,
+      categoria: String(item.categoria).trim(),
+      item: String(item.item).trim(),
+      estado: normalizarEstadoItem(item.estado),
+      comentario: item.comentario ? String(item.comentario).trim() : null,
     }));
 }
 
