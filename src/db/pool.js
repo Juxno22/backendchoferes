@@ -1,94 +1,78 @@
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('Falta DATABASE_URL en variables de entorno');
-}
+const databaseUrl = process.env.DATABASE_URL;
+
+const baseConfig = databaseUrl
+  ? { uri: databaseUrl }
+  : {
+      host: process.env.DB_HOST || process.env.MYSQL_HOST || 'localhost',
+      port: Number(process.env.DB_PORT || process.env.MYSQL_PORT || 3306),
+      user: process.env.DB_USER || process.env.MYSQL_USER || 'root',
+      password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || '',
+      database: process.env.DB_NAME || process.env.MYSQL_DATABASE || 'sistema_choferes',
+    };
 
 export const pool = mysql.createPool({
-  uri: process.env.DATABASE_URL,
+  ...baseConfig,
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
   queueLimit: 0,
-  multipleStatements: true,
-  decimalNumbers: true,
-  dateStrings: true,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  charset: 'utf8mb4',
+  timezone: 'Z',
+  decimalNumbers: false,
 });
 
-function normalizeParams(params = []) {
-  return params.map((param) => (param === undefined ? null : param));
-}
+pool.on?.('connection', (connection) => {
+  connection.on('error', (err) => {
+    console.error('Error en conexión MySQL:', err.code || err.message);
+  });
+});
 
-function isConnectionResetError(err) {
-  return (
-    err?.code === 'ECONNRESET' ||
-    err?.code === 'PROTOCOL_CONNECTION_LOST' ||
-    err?.code === 'EPIPE' ||
-    err?.fatal === true
-  );
+function isTransientMysqlError(err) {
+  return ['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'EPIPE', 'ETIMEDOUT'].includes(err?.code);
 }
 
 export async function query(sql, params = []) {
-  const safeParams = normalizeParams(params);
-
   try {
-    const start = Date.now();
-    const [rows, fields] = await pool.execute(sql, safeParams);
-    const duration = Date.now() - start;
-
-    if (process.env.NODE_ENV === 'development' && duration > 200) {
-      console.log('Query lenta:', {
-        sql: sql.substring(0, 120),
-        duration,
-        rows: Array.isArray(rows) ? rows.length : rows?.affectedRows,
-      });
-    }
-
-    return [rows, fields];
+    return await pool.query(sql, params);
   } catch (err) {
-    if (isConnectionResetError(err)) {
+    if (isTransientMysqlError(err)) {
       console.warn('Conexión MySQL reiniciada. Reintentando query una vez...', {
         code: err.code,
         fatal: err.fatal,
       });
-
-      const [rows, fields] = await pool.execute(sql, safeParams);
-      return [rows, fields];
+      return await pool.query(sql, params);
     }
 
     throw err;
   }
 }
 
-export async function rawQuery(sql, params = []) {
-  const safeParams = normalizeParams(params);
-
+export async function execute(sql, params = []) {
   try {
-    const start = Date.now();
-    const [rows, fields] = await pool.query(sql, safeParams);
-    const duration = Date.now() - start;
-
-    if (process.env.NODE_ENV === 'development' && duration > 200) {
-      console.log('Raw query lenta:', {
-        sql: sql.substring(0, 120),
-        duration,
-      });
-    }
-
-    return [rows, fields];
+    return await pool.execute(sql, params);
   } catch (err) {
-    if (isConnectionResetError(err)) {
-      console.warn('Conexión MySQL reiniciada. Reintentando rawQuery una vez...', {
+    if (isTransientMysqlError(err)) {
+      console.warn('Conexión MySQL reiniciada. Reintentando execute una vez...', {
         code: err.code,
         fatal: err.fatal,
       });
-
-      const [rows, fields] = await pool.query(sql, safeParams);
-      return [rows, fields];
+      return await pool.execute(sql, params);
     }
 
     throw err;
+  }
+}
+
+export async function testConnection() {
+  const connection = await pool.getConnection();
+  try {
+    await connection.ping();
+    return true;
+  } finally {
+    connection.release();
   }
 }
