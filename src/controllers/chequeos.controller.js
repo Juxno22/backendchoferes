@@ -88,10 +88,10 @@ function normalizarTiposFotos(tipos) {
   if (!tipos) return [];
 
   if (Array.isArray(tipos)) {
-    return tipos;
+    return tipos.filter(Boolean).map((tipo) => String(tipo).trim());
   }
 
-  return [tipos];
+  return [String(tipos).trim()];
 }
 
 export async function obtenerCatalogo(req, res) {

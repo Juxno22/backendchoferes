@@ -28,9 +28,9 @@ export function errorHandler(err, req, res, next) {
     });
   }
   // MySQL: valor inválido / dato truncado
-  if (err.code === 'WARN_DATA_TRUNCATED' || err.code === 'ER_TRUNCATED_WRONG_VALUE') {
+  if (err.code === 'WARN_DATA_TRUNCATED' || err.errno === 1265) {
     return res.status(400).json({
-      error: 'Valor inválido',
+      error: 'Valor inválido para una columna',
       detalle: err.sqlMessage || err.message,
     });
   }
